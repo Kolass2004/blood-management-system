@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'thank_you_screen.dart';
 
 class RequestDetailsScreen extends StatefulWidget {
   final String requestId;
@@ -20,14 +21,16 @@ class RequestDetailsScreen extends StatefulWidget {
 class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
   StreamSubscription? _statusSub;
   bool _isProcessing = false;
+  String _currentStatus = 'pending';
 
   @override
   void initState() {
     super.initState();
-    _listenForCancellation();
+    _currentStatus = widget.requestData['status'] ?? 'pending';
+    _listenForStatusChanges();
   }
 
-  void _listenForCancellation() {
+  void _listenForStatusChanges() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -40,17 +43,10 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
         .listen((docSnap) {
       if (docSnap.exists) {
         final status = docSnap.data()?['status'];
-        if (status == 'cancelled') {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('This emergency request was fulfilled by someone else!'),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-            Navigator.of(context).pop();
-          }
+        if (status != null && mounted) {
+           setState(() {
+              _currentStatus = status;
+           });
         }
       }
     });
@@ -74,7 +70,23 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
             .doc(widget.requestId)
             .update({'status': statusValue});
       }
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        if (statusValue == 'acknowledged') {
+          final hospitalName = widget.requestData['hospitalName'] ?? 'Hospital';
+          final hospitalAddress = widget.requestData['hospitalAddress'] ?? 'No address provided';
+          
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => ThankYouScreen(
+                hospitalName: hospitalName,
+                hospitalAddress: hospitalAddress,
+              ),
+            ),
+          );
+        } else {
+          Navigator.of(context).pop();
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -235,40 +247,72 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
             BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, -5))
           ],
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 56,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.white24),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: _currentStatus == 'pending' 
+          ? Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 56,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: _isProcessing ? null : () => _handleDecision('rejected'),
+                      child: const Text('DECLINE', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+                    ),
                   ),
-                  onPressed: _isProcessing ? null : () => _handleDecision('rejected'),
-                  child: const Text('DECLINE', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
                 ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: SizedBox(
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE11D48),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 8,
-                    shadowColor: const Color(0xFFE11D48).withOpacity(0.5),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 56,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE11D48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 8,
+                        shadowColor: const Color(0xFFE11D48).withOpacity(0.5),
+                      ),
+                      onPressed: _isProcessing ? null : () => _handleDecision('acknowledged'),
+                      child: const Text('ACCEPT & HELP', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
                   ),
-                  onPressed: _isProcessing ? null : () => _handleDecision('acknowledged'),
-                  child: const Text('ACCEPT & HELP', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
-              ),
-            ),
-          ],
-        ),
+              ],
+            )
+          : _currentStatus == 'acknowledged'
+              ? SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.withOpacity(0.15),
+                      foregroundColor: Colors.green,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Icons.check_circle_rounded),
+                    label: const Text('YOU ACCEPTED THIS REQUEST', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () {},
+                  ),
+                )
+              : SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                      foregroundColor: Colors.white54,
+                      backgroundColor: Colors.white.withOpacity(0.02),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    icon: const Icon(Icons.info_outline),
+                    label: const Text('FULFILLED BY ANOTHER DONOR', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () {},
+                  ),
+                ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'request_details_screen.dart';
 
 void showNotificationsSheet(BuildContext context) {
   showModalBottomSheet(
@@ -112,7 +113,9 @@ class NotificationsSheet extends StatelessWidget {
                       itemCount: docs.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final data = docs[index].data() as Map<String, dynamic>;
+                        final doc = docs[index];
+                        final data = doc.data() as Map<String, dynamic>;
+                        final requestId = doc.id;
                         final message = data['message'] ?? 'Emergency blood request';
                         final status = data['status'] ?? 'pending';
                         final timestamp = data['timestamp'];
@@ -141,6 +144,17 @@ class NotificationsSheet extends StatelessWidget {
                             ),
                           ),
                           child: ListTile(
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => RequestDetailsScreen(
+                                    requestId: requestId,
+                                    requestData: data,
+                                  ),
+                                ),
+                              );
+                            },
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 8),
                             leading: Container(
