@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import dynamic from 'next/dynamic';
-import { Phone, AlertTriangle, MapPin } from 'lucide-react';
+import { Phone, AlertTriangle, MapPin, Heart, Award } from 'lucide-react';
 
 // Dynamically import MapPicker so Leaflet doesn't crash on server side
 const MapPicker = dynamic(() => import('../components/MapPicker'), {
@@ -39,6 +39,10 @@ export default function Dashboard() {
   const [urgentBloodType, setUrgentBloodType] = useState('');
   const [isUrgentMode, setIsUrgentMode] = useState(false);
   const [informing, setInforming] = useState(null); // Track which user is being informed
+  const [donationCounts, setDonationCounts] = useState({}); // {donorId: count}
+  const [markingDonated, setMarkingDonated] = useState(null); // Track which donor is being marked
+  const [donationNotes, setDonationNotes] = useState('');
+  const [showDonationModal, setShowDonationModal] = useState(null); // donorId for modal
 
   useEffect(() => {
     async function fetchDonors() {
@@ -60,16 +64,58 @@ export default function Dashboard() {
     fetchDonors();
   }, []);
 
+  // Fetch donation counts for each donor
+  useEffect(() => {
+    async function fetchDonationCounts() {
+      const counts = {};
+      for (const donor of donors) {
+        try {
+          const donationsCol = collection(db, `users/${donor.id}/donations`);
+          const donationsSnap = await getDocs(donationsCol);
+          counts[donor.id] = donationsSnap.size;
+        } catch (e) {
+          counts[donor.id] = 0;
+        }
+      }
+      setDonationCounts(counts);
+    }
+    if (donors.length > 0) fetchDonationCounts();
+  }, [donors]);
+
+  const handleMarkDonated = async (donorId, bloodType) => {
+    setMarkingDonated(donorId);
+    try {
+      const donationsCol = collection(db, `users/${donorId}/donations`);
+      await addDoc(donationsCol, {
+        date: Date.now(),
+        bloodType: bloodType || urgentBloodType,
+        hospitalLat: parseFloat(hospitalLat),
+        hospitalLng: parseFloat(hospitalLng),
+        notes: donationNotes || 'Blood donation completed',
+      });
+      // Update donation count locally
+      setDonationCounts(prev => ({ ...prev, [donorId]: (prev[donorId] || 0) + 1 }));
+      setShowDonationModal(null);
+      setDonationNotes('');
+      alert('Donation recorded successfully!');
+    } catch (error) {
+      console.error(error);
+      alert('Failed to record donation.');
+    } finally {
+      setMarkingDonated(null);
+    }
+  };
+
   const handleInformDonor = async (donorId) => {
     setInforming(donorId);
     try {
       // Write the request to the donor's personal request inbox
-      await setDoc(doc(db, `users/\${donorId}/requests`, Date.now().toString()), {
+      const reqPath = 'users/' + donorId + '/requests'; await setDoc(doc(db, reqPath, Date.now().toString()), {
         timestamp: Date.now(),
         hospitalLat: parseFloat(hospitalLat),
         hospitalLng: parseFloat(hospitalLng),
         bloodType: urgentBloodType,
-        message: `URGENT: A nearby hospital requires \${urgentBloodType} blood immediately! You are close to the location. Can you help?`,
+        message: 'URGENT: A nearby hospital requires ' + urgentBloodType + ' blood immediately! You are close to the location. Can you help?',
         status: "pending"
       });
       alert('Alert pushed safely to donor!');
@@ -226,7 +272,14 @@ export default function Dashboard() {
                 processedDonors.map(donor => (
                   <div key={donor.id} className="donor-card" style={{ borderColor: isUrgentMode ? 'rgba(239, 68, 68, 0.4)' : '' }}>
                     <div className="donor-header">
-                      <div className="donor-name">{donor.name || 'Ghost Node'}</div>
+                      <div className="donor-name">
+                        {donor.name || 'Ghost Node'}
+                        {donationCounts[donor.id] > 0 && (
+                          <span className="donation-count-badge" title={`${donationCounts[donor.id]} past donations`}>
+                            <Heart size={10} /> {donationCounts[donor.id]}
+                          </span>
+                        )}
+                      </div>
                       <div className="blood-badge">{donor.bloodGroup || 'N/A'}</div>
                     </div>
                     
@@ -264,6 +317,17 @@ export default function Dashboard() {
                           {informing === donor.id ? 'Pinging...' : 'INFORM'}
                         </button>
                       )}
+                      {isUrgentMode && (
+                        <button 
+                          className="btn btn-donated" 
+                          style={{ flex: 1, padding: '0.5rem' }} 
+                          disabled={markingDonated === donor.id}
+                          onClick={() => setShowDonationModal(donor.id)}
+                        >
+                          <Award size={14} />
+                          {markingDonated === donor.id ? 'Saving...' : 'DONATED'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -277,6 +341,40 @@ export default function Dashboard() {
         </div>
       </div>
       
+      {/* Donation Modal */}
+      {showDonationModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="panel" style={{ maxWidth: '420px', width: '90%' }}>
+            <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Award size={20} color="var(--accent-primary)" /> Record Donation
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+              Confirm that this donor has successfully donated blood.
+            </p>
+            <div className="form-group">
+              <label>Notes (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Donated 1 unit at City Hospital"
+                value={donationNotes}
+                onChange={(e) => setDonationNotes(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => { setShowDonationModal(null); setDonationNotes(''); }}>Cancel</button>
+              <button
+                className="btn"
+                style={{ flex: 1 }}
+                disabled={markingDonated === showDonationModal}
+                onClick={() => handleMarkDonated(showDonationModal, urgentBloodType)}
+              >
+                {markingDonated === showDonationModal ? 'Recording...' : 'Confirm Donation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />

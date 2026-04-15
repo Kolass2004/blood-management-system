@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import '../services/location_service.dart';
-import 'registration_screen.dart';
-import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -56,25 +53,8 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: googleAuth.idToken,
       );
 
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final user = userCredential.user;
-
-      if (user != null) {
-        // Check if user exists in firestore
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (!doc.exists) {
-          if (mounted) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegistrationScreen()));
-          }
-        } else {
-          // Check if registration was completed
-          if (doc.data() != null && doc.data()!['bloodGroup'] == null) {
-            if (mounted) {
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RegistrationScreen()));
-            }
-          }
-        }
-      }
+      await FirebaseAuth.instance.signInWithCredential(credential);
+      // main.dart's StreamBuilder + RegistrationGate handles routing
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: \$e')));
