@@ -20,6 +20,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Editable controllers
   final _phoneController = TextEditingController();
+  final _ageController = TextEditingController();
+  final _weightController = TextEditingController();
   final _allergiesController = TextEditingController();
   final _pastRecordsController = TextEditingController();
   final _nomineeController = TextEditingController();
@@ -41,6 +43,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _phoneController.dispose();
+    _ageController.dispose();
+    _weightController.dispose();
     _allergiesController.dispose();
     _pastRecordsController.dispose();
     _nomineeController.dispose();
@@ -67,6 +71,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _userData = data;
         _phoneController.text = data['phone'] ?? '';
+        _ageController.text = data['age'] ?? '';
+        _weightController.text = data['weight'] ?? '';
         _allergiesController.text = data['allergies'] ?? '';
         _pastRecordsController.text = data['pastRecords'] ?? '';
         _nomineeController.text = data['nomineeDetails'] ?? '';
@@ -90,6 +96,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .doc(user.uid)
           .update({
         'phone': _phoneController.text,
+        'age': _ageController.text,
+        'weight': _weightController.text,
         'allergies': _allergiesController.text,
         'pastRecords': _pastRecordsController.text,
         'nomineeDetails': _nomineeController.text,
@@ -254,6 +262,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             label: 'Phone Number',
                             controller: _phoneController,
                             keyboard: TextInputType.phone,
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildEditableField(
+                                  icon: Icons.cake_outlined,
+                                  label: 'Age',
+                                  controller: _ageController,
+                                  keyboard: TextInputType.number,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildEditableField(
+                                  icon: Icons.monitor_weight_outlined,
+                                  label: 'Weight',
+                                  controller: _weightController,
+                                  keyboard: TextInputType.number,
+                                ),
+                              ),
+                            ],
                           ),
                           _buildBloodGroupField(),
                           _buildEditableField(

@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { collection, doc, getDoc, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, addDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
-import { Plus, Users, Droplets, Phone, User, Activity, ArrowRight, LogOut, Loader2 } from "lucide-react";
+import { Plus, Users, Droplets, Phone, User, Activity, ArrowRight, LogOut, Loader2, Trash2 } from "lucide-react";
 
 export default function HospitalDashboard() {
   const router = useRouter();
@@ -21,6 +21,7 @@ export default function HospitalDashboard() {
     bloodGroup: "A+",
     nomineeName: "",
     contact: "",
+    conditions: "",
   });
 
   const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -73,7 +74,7 @@ export default function HospitalDashboard() {
         createdAt: serverTimestamp(),
       });
       setShowModal(false);
-      setNewPatient({ name: "", age: "", bloodGroup: "A+", nomineeName: "", contact: "" });
+      setNewPatient({ name: "", age: "", bloodGroup: "A+", nomineeName: "", contact: "", conditions: "" });
       fetchPatients(hospitalId); // refresh
     } catch (err) {
       console.error(err);
@@ -84,6 +85,19 @@ export default function HospitalDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("hospitalId");
     router.push("/admin/login");
+  };
+
+  const handleDeletePatient = async (patientId) => {
+    const confirmDelete = window.confirm("Are you sure you want to permanently remove this patient record?");
+    if (!confirmDelete) return;
+
+    try {
+      await deleteDoc(doc(db, `hospitals/${hospitalId}/patients`, patientId));
+      setPatients(prev => prev.filter(p => p.id !== patientId));
+    } catch (err) {
+      console.error("Error deleting patient:", err);
+      alert("Failed to delete patient record.");
+    }
   };
 
   if (loading) {
@@ -146,7 +160,16 @@ export default function HospitalDashboard() {
               <div key={patient.id} className="bg-[#0A0A0C] border border-[#1E1E24] rounded-2xl p-6 hover:border-[#E11D48]/50 transition-colors group flex flex-col h-full">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-xl font-bold text-white mb-1 group-hover:text-[#E11D48] transition-colors">{patient.name}</h3>
+                    <h3 className="text-xl font-bold text-white mb-1 group-hover:text-[#E11D48] transition-colors flex items-center gap-2">
+                      {patient.name}
+                      <button 
+                        onClick={() => handleDeletePatient(patient.id)} 
+                        className="text-gray-600 hover:text-[#E11D48] transition-colors p-1"
+                        title="Delete Patient"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </h3>
                     <p className="text-sm text-gray-400">{patient.age} years old</p>
                   </div>
                   <div className="bg-[#E11D48]/10 border border-[#E11D48]/30 text-[#E11D48] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
@@ -156,6 +179,15 @@ export default function HospitalDashboard() {
                 </div>
                 
                 <div className="flex-1 space-y-3 mb-6">
+                  {patient.conditions && (
+                    <div className="flex items-start text-sm text-gray-300 bg-[#121214] p-3 rounded-lg border border-[#1e1e24]">
+                      <Activity className="w-4 h-4 text-gray-500 mr-3 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-gray-500">Conditions</p>
+                        <p className="line-clamp-2 text-gray-300">{patient.conditions}</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center text-sm text-gray-300 bg-[#121214] p-3 rounded-lg border border-[#1e1e24]">
                     <User className="w-4 h-4 text-gray-500 mr-3" />
                     <div>
@@ -229,6 +261,11 @@ export default function HospitalDashboard() {
                 <div>
                   <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Contact Number</label>
                   <input required type="tel" value={newPatient.contact} onChange={e => setNewPatient({...newPatient, contact: e.target.value})} className="w-full bg-[#121214] border border-[#2A2A35] rounded-xl p-3 text-white focus:outline-none focus:border-[#E11D48]" placeholder="+91 9876543210" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Patient Conditions</label>
+                  <textarea required rows="3" value={newPatient.conditions} onChange={e => setNewPatient({...newPatient, conditions: e.target.value})} className="w-full bg-[#121214] border border-[#2A2A35] rounded-xl p-3 text-white focus:outline-none focus:border-[#E11D48] resize-none" placeholder="E.g., Dengue fever, Surgery requirement..."></textarea>
                 </div>
 
                 <div className="pt-4">

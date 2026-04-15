@@ -212,8 +212,11 @@ class NotificationsSheet extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            trailing: isPending
-                                ? IconButton(
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isPending)
+                                  IconButton(
                                     icon: const Icon(Icons.check_circle_outline,
                                         color: Color(0xFFE11D48)),
                                     onPressed: () {
@@ -221,8 +224,15 @@ class NotificationsSheet extends StatelessWidget {
                                         'status': 'acknowledged',
                                       });
                                     },
-                                  )
-                                : null,
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.white38),
+                                  onPressed: () {
+                                    docs[index].reference.delete();
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                         );
                       },

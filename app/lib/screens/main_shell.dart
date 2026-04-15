@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
+import 'request_details_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -78,16 +79,18 @@ class _MainShellState extends State<MainShell> {
       },
       pageBuilder: (context, anim, anim2) {
         return _UrgentOverlayContent(
+          requestId: requestId,
           message: message,
           bloodType: bloodType,
           onAcknowledge: () {
-            FirebaseFirestore.instance
-                .collection('users')
-                .doc(FirebaseAuth.instance.currentUser!.uid)
-                .collection('requests')
-                .doc(requestId)
-                .update({'status': 'acknowledged'});
-            Navigator.of(context).pop();
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => RequestDetailsScreen(
+                  requestId: requestId,
+                  requestData: data,
+                ),
+              ),
+            );
           },
           onDismiss: () {
             Navigator.of(context).pop();
@@ -157,12 +160,14 @@ class _MainShellState extends State<MainShell> {
 
 /// Full-screen dramatic overlay for urgent blood requests
 class _UrgentOverlayContent extends StatefulWidget {
+  final String requestId;
   final String message;
   final String bloodType;
   final VoidCallback onAcknowledge;
   final VoidCallback onDismiss;
 
   const _UrgentOverlayContent({
+    required this.requestId,
     required this.message,
     required this.bloodType,
     required this.onAcknowledge,
@@ -176,6 +181,7 @@ class _UrgentOverlayContent extends StatefulWidget {
 class _UrgentOverlayContentState extends State<_UrgentOverlayContent>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
+  StreamSubscription? _statusSub;
 
   @override
   void initState() {
@@ -184,10 +190,42 @@ class _UrgentOverlayContentState extends State<_UrgentOverlayContent>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
+
+    _listenForCancellation();
+  }
+
+  void _listenForCancellation() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    _statusSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('requests')
+        .doc(widget.requestId)
+        .snapshots()
+        .listen((docSnap) {
+      if (docSnap.exists) {
+        final status = docSnap.data()?['status'];
+        if (status == 'cancelled') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('This emergency request was fulfilled by someone else!'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            widget.onDismiss();
+          }
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
+    _statusSub?.cancel();
     _pulseController.dispose();
     super.dispose();
   }
@@ -330,7 +368,7 @@ class _UrgentOverlayContentState extends State<_UrgentOverlayContent>
                         ),
                         onPressed: widget.onAcknowledge,
                         child: const Text(
-                          'I CAN HELP',
+                          'VIEW REQUEST',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,

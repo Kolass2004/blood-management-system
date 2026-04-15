@@ -35,6 +35,7 @@ function RequestsContent() {
   const [patientInfo, setPatientInfo] = useState(null);
   const [eligibleDonors, setEligibleDonors] = useState([]);
   const [requestSent, setRequestSent] = useState(false);
+  const [expandedDonor, setExpandedDonor] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,9 +61,10 @@ function RequestsContent() {
         // Fetch ALL Donors to filter
         const usersSnap = await getDocs(collection(db, "users"));
         const matchedDonors = [];
+        let anySent = false;
 
-        usersSnap.forEach((doc) => {
-          const user = doc.data();
+        for (const userDoc of usersSnap.docs) {
+          const user = userDoc.data();
           // Filter by Blood Group and valid Location
           if (user.bloodGroup === pData.bloodGroup && user.location && user.isRegistrationComplete !== false) {
             const distance = getDistanceFromLatLonInKm(
@@ -74,19 +76,31 @@ function RequestsContent() {
 
             // Match within 30 KM
             if (distance <= 30) {
+              const donorId = userDoc.id;
+              let currentStatus = "ready";
+              
+              // Check if previously sent
+              const reqDoc = await getDoc(doc(db, `users/${donorId}/requests`, patientId));
+              if (reqDoc.exists()) {
+                anySent = true;
+                currentStatus = reqDoc.data().status;
+                setupDonorListener(donorId, patientId);
+              }
+
               matchedDonors.push({
-                id: doc.id,
+                id: donorId,
                 ...user,
                 distance,
-                status: "ready"
+                status: currentStatus
               });
             }
           }
-        });
+        }
 
         // Sort by closest first
         matchedDonors.sort((a, b) => a.distance - b.distance);
         setEligibleDonors(matchedDonors);
+        if (anySent) setRequestSent(true);
         setLoading(false);
 
       } catch (err) {
@@ -101,49 +115,76 @@ function RequestsContent() {
   const handleSendRequests = async () => {
     if (eligibleDonors.length === 0) return;
     
-    // eslint-disable-next-line react-hooks/purity
-    const bulkRequestId = Date.now().toString();
-
-    const updatedDonors = [...eligibleDonors].map(d => ({...d, status: "pending"}));
+    const updatedDonors = [];
+    for (const d of eligibleDonors) {
+      if (d.status === "ready") {
+         updatedDonors.push({...d, status: "pending"});
+      } else {
+         updatedDonors.push(d);
+      }
+    }
     setEligibleDonors(updatedDonors);
     setRequestSent(true);
 
     // Send individual request docs to all eligible donors' inboxes
     for (const donor of updatedDonors) {
+      if (donor.status !== "pending") continue; // only send to newly updated donors
       try {
         const reqPath = `users/${donor.id}/requests`;
-        await setDoc(doc(db, reqPath, bulkRequestId), {
+        await setDoc(doc(db, reqPath, patientId), {
           // eslint-disable-next-line react-hooks/purity
           timestamp: Date.now(),
           hospitalLat: parseFloat(hospitalInfo.location.lat),
           hospitalLng: parseFloat(hospitalInfo.location.lng),
           bloodType: patientInfo.bloodGroup,
-          message: `URGENT: ${hospitalInfo.name} requires ${patientInfo.bloodGroup} blood for a ${patientInfo.age}y old patient. You are ${donor.distance.toFixed(1)}km away. Can you help?`,
+          message: `URGENT: ${hospitalInfo.name} requires ${patientInfo.bloodGroup} blood for a ${patientInfo.age}y old patient. You are ${donor.distance.toFixed(1)}km away`,
+          patientName: patientInfo.name,
+          patientAge: patientInfo.age,
+          conditions: patientInfo.conditions || "None specified",
+          contactNominee: `${patientInfo.nomineeName} (${patientInfo.contact})`,
+          hospitalName: hospitalInfo.name,
+          hospitalAddress: hospitalInfo.address || "Location on Map",
+          distanceKM: donor.distance.toFixed(1),
           status: "pending"
         });
 
         // Set up real-time listener to track acknowledgement
-        setupDonorListener(donor.id, bulkRequestId);
+        setupDonorListener(donor.id, patientId);
       } catch (err) {
         console.error(`Error sending request to ${donor.id}:`, err);
       }
     }
   };
 
-  const setupDonorListener = (donorId, requestId) => {
+  function setupDonorListener(donorId, requestId) {
     const unsub = onSnapshot(doc(db, `users/${donorId}/requests/${requestId}`), (docSnap) => {
       if (docSnap.exists()) {
         const currentData = docSnap.data();
-        if (currentData.status === "acknowledged") {
-          // Update sidebar array
-          setEligibleDonors(prev => prev.map(d => 
-            d.id === donorId ? { ...d, status: "acknowledged" } : d
-          ));
-        }
+        // Sync any incoming status automatically (pending, acknowledged, acquired, cancelled, rejected)
+        setEligibleDonors(prev => prev.map(d => 
+          d.id === donorId ? { ...d, status: currentData.status } : d
+        ));
       }
     });
 
     // We keep these listeners active globally for this view so state updates automatically
+  }
+
+  const handleAcquired = async (e, acquiredDonorId) => {
+    e.stopPropagation();
+    
+    // Update Firebase for all active sent donors
+    for (const donor of eligibleDonors) {
+      if (donor.status === "pending" || donor.status === "acknowledged") {
+        try {
+          const newStatus = donor.id === acquiredDonorId ? "acquired" : "cancelled";
+          // Setting merge:true updates only the status safely
+          await setDoc(doc(db, `users/${donor.id}/requests`, patientId), { status: newStatus }, { merge: true });
+        } catch (err) {
+          console.error("Failed to update status for", donor.id, err);
+        }
+      }
+    }
   };
 
 
@@ -244,12 +285,17 @@ function RequestsContent() {
           {eligibleDonors.map((donor, idx) => (
              <div 
                key={donor.id} 
-               className={`p-4 rounded-xl border transition-all duration-500 ${
+               onClick={() => setExpandedDonor(expandedDonor === donor.id ? null : donor.id)}
+               className={`p-4 rounded-xl border transition-all duration-300 cursor-pointer ${
                  donor.status === 'acknowledged' 
                  ? 'bg-green-500/10 border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.1)]' 
+                 : donor.status === 'acquired'
+                 ? 'bg-[#E11D48]/10 border-[#E11D48]/50 shadow-[0_0_20px_rgba(225,29,72,0.1)]'
                  : donor.status === 'pending'
-                 ? 'bg-[#121214] border-[#E11D48]/30'
-                 : 'bg-[#121214] border-[#1E1E24]'
+                 ? 'bg-[#121214] border-[#E11D48]/30 hover:border-[#E11D48]/50'
+                 : donor.status === 'cancelled'
+                 ? 'bg-[#0A0A0C] border-[#1E1E24] opacity-50'
+                 : 'bg-[#121214] border-[#1E1E24] hover:border-[#2A2A35]'
                }`}
              >
                 <div className="flex items-center justify-between mb-2">
@@ -267,14 +313,30 @@ function RequestsContent() {
                   </div>
                 </div>
 
+                {expandedDonor === donor.id && (
+                  <div className="mt-3 pt-3 border-t border-[#1E1E24] text-xs space-y-2 text-gray-400" onClick={e => e.stopPropagation()}>
+                    <div className="grid grid-cols-2 gap-2">
+                      <p><span className="text-gray-500">Email:</span> <br/><span className="text-gray-300">{donor.email || 'N/A'}</span></p>
+                      <p><span className="text-gray-500">Phone:</span> <br/><span className="text-gray-300">{donor.phone || donor.phoneNumber || 'N/A'}</span></p>
+                      <p><span className="text-gray-500">Age:</span> <br/><span className="text-gray-300">{donor.age ? `${donor.age} yrs` : 'N/A'}</span></p>
+                      <p><span className="text-gray-500">Weight:</span> <br/><span className="text-gray-300">{donor.weight ? `${donor.weight} kg` : 'N/A'}</span></p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-3 flex items-center justify-between pt-3 border-t border-[#1E1E24]">
                   {donor.status === 'ready' && <span className="text-xs text-gray-500 px-2 py-1 bg-[#1E1E24] rounded-md">Not Sent</span>}
                   {donor.status === 'pending' && <span className="text-xs text-orange-400 flex items-center gap-1.5"><span className="animate-pulse w-2 h-2 rounded-full bg-orange-400"></span> Pending Response</span>}
                   {donor.status === 'acknowledged' && <span className="text-xs text-green-500 font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> I Can Help!</span>}
+                  {donor.status === 'cancelled' && <span className="text-xs text-gray-500 font-medium flex items-center gap-1">Cancelled (Got Blood)</span>}
+                  {donor.status === 'acquired' && <span className="text-xs text-[#E11D48] font-bold flex items-center gap-1"><Droplets className="w-3 h-3"/> Secured</span>}
                   
                   {(donor.status === 'acknowledged') && (
-                    <button className="text-xs bg-[#2A2A35] hover:bg-[#3f3f4e] text-white px-2 py-1 rounded transition-colors flex items-center gap-1">
-                      <Phone className="w-3 h-3" /> Call {donor.phone}
+                    <button 
+                      onClick={(e) => handleAcquired(e, donor.id)}
+                      className="text-xs bg-[#E11D48]/10 hover:bg-[#E11D48] hover:text-white text-[#E11D48] border border-[#E11D48]/30 px-3 py-1 rounded transition-colors flex items-center gap-1 font-bold"
+                    >
+                      <CheckCircle2 className="w-3 h-3" /> Acquired
                     </button>
                   )}
                 </div>

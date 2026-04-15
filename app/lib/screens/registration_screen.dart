@@ -13,6 +13,8 @@ class RegistrationScreen extends StatefulWidget {
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _ageController = TextEditingController();
+  final _weightController = TextEditingController();
   final _allergiesController = TextEditingController();
   final _pastRecordsController = TextEditingController();
   final _nomineeController = TextEditingController();
@@ -32,6 +34,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           'name': user.displayName,
           'email': user.email,
           'phone': _phoneController.text,
+          'age': _ageController.text,
+          'weight': _weightController.text,
           'bloodGroup': _bloodGroup,
           'allergies': _allergiesController.text,
           'pastRecords': _pastRecordsController.text,
@@ -88,6 +92,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   const SizedBox(height: 30),
                   
                   _buildInputField('Phone Number', Icons.phone, _phoneController, isRequired: true, keyboard: TextInputType.phone),
+                  const SizedBox(height: 16),
+                  
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildInputField('Age (yrs)', Icons.cake_outlined, _ageController, isRequired: true, keyboard: TextInputType.number),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildInputField('Weight (kg)', Icons.monitor_weight_outlined, _weightController, isRequired: true, keyboard: TextInputType.number),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   
                   // Custom Dropdown
