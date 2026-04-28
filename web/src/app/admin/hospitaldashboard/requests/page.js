@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { collection, doc, getDoc, getDocs, setDoc, onSnapshot } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc, addDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../../../../lib/firebase";
 import dynamic from "next/dynamic";
 import { MapPin, User, Droplets, Phone, Activity, ArrowLeft, Send, CheckCircle2 } from "lucide-react";
@@ -65,6 +65,13 @@ function RequestsContent() {
 
         for (const userDoc of usersSnap.docs) {
           const user = userDoc.data();
+
+          // Skip donors who donated within the last 56 days (cooldown period)
+          if (user.lastDonationDate) {
+            const daysSinceLastDonation = (Date.now() - user.lastDonationDate) / (1000 * 60 * 60 * 24);
+            if (daysSinceLastDonation < 56) continue;
+          }
+
           // Filter by Blood Group and valid Location
           if (user.bloodGroup === pData.bloodGroup && user.location && user.isRegistrationComplete !== false) {
             const distance = getDistanceFromLatLonInKm(
@@ -180,6 +187,26 @@ function RequestsContent() {
           const newStatus = donor.id === acquiredDonorId ? "acquired" : "cancelled";
           // Setting merge:true updates only the status safely
           await setDoc(doc(db, `users/${donor.id}/requests`, patientId), { status: newStatus }, { merge: true });
+
+          // For the acquired donor: record the donation and set cooldown
+          if (donor.id === acquiredDonorId) {
+            const donationTimestamp = Date.now();
+
+            // Write donation record to users/{donorId}/donations
+            await addDoc(collection(db, `users/${acquiredDonorId}/donations`), {
+              date: donationTimestamp,
+              bloodType: patientInfo.bloodGroup,
+              hospitalName: hospitalInfo.name,
+              hospitalAddress: hospitalInfo.address || "Location on Map",
+              patientName: patientInfo.name,
+              requestId: patientId,
+            });
+
+            // Set lastDonationDate on the donor's main profile for 56-day filtering
+            await setDoc(doc(db, "users", acquiredDonorId), {
+              lastDonationDate: donationTimestamp,
+            }, { merge: true });
+          }
         } catch (err) {
           console.error("Failed to update status for", donor.id, err);
         }

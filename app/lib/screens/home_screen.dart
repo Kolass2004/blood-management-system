@@ -576,6 +576,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
         ),
         const SizedBox(height: 16),
+
+        // ── Cooldown / Eligibility Card ──
+        _buildCooldownCard(),
+        const SizedBox(height: 16),
+
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('users')
@@ -627,7 +632,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               children: donations.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final bloodType = data['bloodType'] ?? 'N/A';
-                final notes = data['notes'] ?? '';
+                final hospitalName = data['hospitalName'] ?? '';
+                final patientName = data['patientName'] ?? '';
                 final timestamp = data['date'];
                 String dateStr = 'Unknown date';
                 if (timestamp != null) {
@@ -646,67 +652,117 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white.withOpacity(0.06)),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              const Color(0xFFE11D48).withOpacity(0.2),
-                              const Color(0xFFE11D48).withOpacity(0.05),
+                      Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  const Color(0xFFE11D48).withOpacity(0.2),
+                                  const Color(0xFFE11D48).withOpacity(0.05),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: Text(
+                                bloodType,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Color(0xFFE11D48),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Blood Donation — $bloodType',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  dateStr,
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Hospital & Patient details
+                      if (hospitalName.isNotEmpty || patientName.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.03),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (hospitalName.isNotEmpty)
+                                Row(
+                                  children: [
+                                    Icon(Icons.local_hospital_outlined,
+                                        size: 14, color: Colors.white.withOpacity(0.3)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        hospitalName,
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (hospitalName.isNotEmpty && patientName.isNotEmpty)
+                                const SizedBox(height: 6),
+                              if (patientName.isNotEmpty)
+                                Row(
+                                  children: [
+                                    Icon(Icons.person_outline,
+                                        size: 14, color: Colors.white.withOpacity(0.3)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Patient: $patientName',
+                                        style: const TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Center(
-                          child: Text(
-                            bloodType,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: Color(0xFFE11D48),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Blood Donation — $bloodType',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              notes.isNotEmpty ? notes : 'Donated successfully',
-                              style: const TextStyle(
-                                color: Colors.white38,
-                                fontSize: 12,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        dateStr,
-                        style: const TextStyle(
-                          color: Colors.white24,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 );
@@ -715,6 +771,181 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildCooldownCard() {
+    final lastDonation = _userData?['lastDonationDate'];
+    if (lastDonation == null) {
+      // No donation recorded — eligible
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.green.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.check_circle_rounded,
+                  color: Colors.green, size: 24),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ready to Donate',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'You are eligible to receive donation requests',
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Calculate days since last donation
+    final lastDate = lastDonation is Timestamp
+        ? lastDonation.toDate()
+        : DateTime.fromMillisecondsSinceEpoch(
+            lastDonation is int ? lastDonation : 0);
+    final daysSince = DateTime.now().difference(lastDate).inDays;
+    final daysRemaining = 56 - daysSince;
+    final progress = (daysSince / 56).clamp(0.0, 1.0);
+
+    if (daysRemaining <= 0) {
+      // Cooldown complete — eligible again
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.green.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.check_circle_rounded,
+                  color: Colors.green, size: 24),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ready to Donate Again!',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Your 56-day recovery period is complete',
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // In cooldown — show countdown
+    final eligibleDate = lastDate.add(const Duration(days: 56));
+    final eligibleStr = DateFormat('MMM d, yyyy').format(eligibleDate);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE11D48).withOpacity(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE11D48).withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          // Circular progress
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 5,
+                  backgroundColor: Colors.white.withOpacity(0.06),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE11D48)),
+                ),
+                Center(
+                  child: Text(
+                    '$daysRemaining',
+                    style: const TextStyle(
+                      color: Color(0xFFE11D48),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Recovery Period',
+                  style: TextStyle(
+                    color: Color(0xFFE11D48),
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$daysRemaining days until next eligible donation',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Eligible on $eligibleStr',
+                  style: const TextStyle(color: Colors.white24, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
